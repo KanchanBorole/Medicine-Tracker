@@ -1,4 +1,6 @@
 import { medicines, donations, ngos, type Medicine, type Donation, type NGO, type InsertMedicine, type InsertDonation, type InsertNGO } from "@shared/schema";
+import { db } from "./db";
+import { eq } from "drizzle-orm";
 
 export interface IStorage {
   // Medicine operations
@@ -20,62 +22,53 @@ export interface IStorage {
   createNGO(ngo: InsertNGO): Promise<NGO>;
 }
 
-export class MemStorage implements IStorage {
-  private medicines: Map<number, Medicine>;
-  private donations: Map<number, Donation>;
-  private ngos: Map<number, NGO>;
-  private medicineIdCounter: number;
-  private donationIdCounter: number;
-  private ngoIdCounter: number;
-
+export class DatabaseStorage implements IStorage {
   constructor() {
-    this.medicines = new Map();
-    this.donations = new Map();
-    this.ngos = new Map();
-    this.medicineIdCounter = 1;
-    this.donationIdCounter = 1;
-    this.ngoIdCounter = 1;
-
-    // Initialize with some NGOs
+    // Initialize with sample NGOs if the table is empty
     this.initializeNGOs();
   }
 
-  private initializeNGOs() {
-    const sampleNGOs: InsertNGO[] = [
-      {
-        name: "Hope Foundation",
-        contactEmail: "contact@hopefoundation.org",
-        contactPhone: "+1-555-0101",
-        address: "123 Hope Street, Medical District",
-        active: true,
-      },
-      {
-        name: "Care NGO",
-        contactEmail: "info@carengo.org",
-        contactPhone: "+1-555-0102",
-        address: "456 Care Avenue, Health Zone",
-        active: true,
-      },
-      {
-        name: "Healing Hands",
-        contactEmail: "help@healinghands.org",
-        contactPhone: "+1-555-0103",
-        address: "789 Healing Boulevard, Wellness Center",
-        active: true,
-      },
-      {
-        name: "Wellness Trust",
-        contactEmail: "support@wellnesstrust.org",
-        contactPhone: "+1-555-0104",
-        address: "321 Wellness Road, Community Health",
-        active: true,
-      },
-    ];
+  private async initializeNGOs() {
+    try {
+      const existingNGOs = await db.select().from(ngos);
+      
+      if (existingNGOs.length === 0) {
+        const sampleNGOs: InsertNGO[] = [
+          {
+            name: "Hope Foundation",
+            contactEmail: "contact@hopefoundation.org",
+            contactPhone: "+1-555-0101",
+            address: "123 Hope Street, Medical District",
+            active: true,
+          },
+          {
+            name: "Care NGO",
+            contactEmail: "info@carengo.org",
+            contactPhone: "+1-555-0102",
+            address: "456 Care Avenue, Health Zone",
+            active: true,
+          },
+          {
+            name: "Healing Hands",
+            contactEmail: "help@healinghands.org",
+            contactPhone: "+1-555-0103",
+            address: "789 Healing Boulevard, Wellness Center",
+            active: true,
+          },
+          {
+            name: "Wellness Trust",
+            contactEmail: "support@wellnesstrust.org",
+            contactPhone: "+1-555-0104",
+            address: "321 Wellness Road, Community Health",
+            active: true,
+          },
+        ];
 
-    sampleNGOs.forEach(ngo => {
-      const id = this.ngoIdCounter++;
-      this.ngos.set(id, { ...ngo, id });
-    });
+        await db.insert(ngos).values(sampleNGOs);
+      }
+    } catch (error) {
+      console.error("Error initializing NGOs:", error);
+    }
   }
 
   private calculateMedicineStatus(expiryDate: Date): string {
@@ -89,108 +82,132 @@ export class MemStorage implements IStorage {
 
   // Medicine operations
   async getMedicines(): Promise<Medicine[]> {
-    return Array.from(this.medicines.values());
+    return await db.select().from(medicines);
   }
 
   async getMedicine(id: number): Promise<Medicine | undefined> {
-    return this.medicines.get(id);
+    const [medicine] = await db.select().from(medicines).where(eq(medicines.id, id));
+    return medicine || undefined;
   }
 
   async createMedicine(insertMedicine: InsertMedicine): Promise<Medicine> {
-    const id = this.medicineIdCounter++;
     const expiryDate = new Date(insertMedicine.expiryDate);
     const status = this.calculateMedicineStatus(expiryDate);
     
-    const medicine: Medicine = {
+    const medicineData = {
       ...insertMedicine,
-      id,
       status,
-      createdAt: new Date(),
       expiryDate,
+      batchNumber: insertMedicine.batchNumber || null,
+      barcode: insertMedicine.barcode || null,
+      notes: insertMedicine.notes || null,
     };
     
-    this.medicines.set(id, medicine);
+    const [medicine] = await db
+      .insert(medicines)
+      .values(medicineData)
+      .returning();
     return medicine;
   }
 
   async updateMedicine(id: number, updates: Partial<InsertMedicine>): Promise<Medicine | undefined> {
-    const existing = this.medicines.get(id);
+    const existing = await this.getMedicine(id);
     if (!existing) return undefined;
 
     const expiryDate = updates.expiryDate ? new Date(updates.expiryDate) : existing.expiryDate;
     const status = this.calculateMedicineStatus(expiryDate);
 
-    const updated: Medicine = {
-      ...existing,
+    const updateData = {
       ...updates,
-      expiryDate,
       status,
+      expiryDate,
+      batchNumber: updates.batchNumber || null,
+      barcode: updates.barcode || null,
+      notes: updates.notes || null,
     };
 
-    this.medicines.set(id, updated);
-    return updated;
+    const [updated] = await db
+      .update(medicines)
+      .set(updateData)
+      .where(eq(medicines.id, id))
+      .returning();
+    
+    return updated || undefined;
   }
 
   async deleteMedicine(id: number): Promise<boolean> {
-    return this.medicines.delete(id);
+    const result = await db.delete(medicines).where(eq(medicines.id, id));
+    return result.rowCount > 0;
   }
 
   // Donation operations
   async getDonations(): Promise<Donation[]> {
-    return Array.from(this.donations.values());
+    return await db.select().from(donations);
   }
 
   async getDonation(id: number): Promise<Donation | undefined> {
-    return this.donations.get(id);
+    const [donation] = await db.select().from(donations).where(eq(donations.id, id));
+    return donation || undefined;
   }
 
   async createDonation(insertDonation: InsertDonation): Promise<Donation> {
-    const id = this.donationIdCounter++;
-    const donation: Donation = {
+    const donationData = {
       ...insertDonation,
-      id,
-      status: "pending",
-      createdAt: new Date(),
+      status: "pending" as const,
       pickupDate: new Date(insertDonation.pickupDate),
+      specialInstructions: insertDonation.specialInstructions || null,
+      medicineIds: insertDonation.medicineIds || null,
     };
     
-    this.donations.set(id, donation);
+    const [donation] = await db
+      .insert(donations)
+      .values(donationData)
+      .returning();
     return donation;
   }
 
   async updateDonation(id: number, updates: Partial<InsertDonation>): Promise<Donation | undefined> {
-    const existing = this.donations.get(id);
+    const existing = await this.getDonation(id);
     if (!existing) return undefined;
 
-    const updated: Donation = {
-      ...existing,
+    const updateData = {
       ...updates,
       pickupDate: updates.pickupDate ? new Date(updates.pickupDate) : existing.pickupDate,
+      specialInstructions: updates.specialInstructions || null,
+      medicineIds: updates.medicineIds || null,
     };
 
-    this.donations.set(id, updated);
-    return updated;
+    const [updated] = await db
+      .update(donations)
+      .set(updateData)
+      .where(eq(donations.id, id))
+      .returning();
+    
+    return updated || undefined;
   }
 
   // NGO operations
   async getNGOs(): Promise<NGO[]> {
-    return Array.from(this.ngos.values());
+    return await db.select().from(ngos);
   }
 
   async getNGO(id: number): Promise<NGO | undefined> {
-    return this.ngos.get(id);
+    const [ngo] = await db.select().from(ngos).where(eq(ngos.id, id));
+    return ngo || undefined;
   }
 
   async createNGO(insertNGO: InsertNGO): Promise<NGO> {
-    const id = this.ngoIdCounter++;
-    const ngo: NGO = {
+    const ngoData = {
       ...insertNGO,
-      id,
+      active: insertNGO.active ?? true,
     };
     
-    this.ngos.set(id, ngo);
+    const [ngo] = await db
+      .insert(ngos)
+      .values(ngoData)
+      .returning();
     return ngo;
   }
 }
 
-export const storage = new MemStorage();
+export const storage = new DatabaseStorage();

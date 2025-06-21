@@ -2,18 +2,43 @@ import { formatDate, getDaysUntilExpiry } from "@/utils/dateUtils";
 
 export default function MedicineCard({ medicine, onEdit, onDonate, onDelete }) {
   const daysUntilExpiry = getDaysUntilExpiry(medicine.expiryDate);
+  const currentDate = new Date();
+  const expiryDate = new Date(medicine.expiryDate);
   
-  let statusText, statusClass;
+  let statusText, statusClass, urgencyIcon;
   if (daysUntilExpiry < 0) {
-    statusText = 'Expired';
+    statusText = `Expired ${Math.abs(daysUntilExpiry)} days ago`;
     statusClass = 'expired';
+    urgencyIcon = 'fas fa-exclamation-triangle';
+  } else if (daysUntilExpiry === 0) {
+    statusText = 'Expires today!';
+    statusClass = 'expired';
+    urgencyIcon = 'fas fa-exclamation-circle';
+  } else if (daysUntilExpiry <= 3) {
+    statusText = `${daysUntilExpiry} days left`;
+    statusClass = 'expired';
+    urgencyIcon = 'fas fa-exclamation-circle';
   } else if (daysUntilExpiry <= 7) {
     statusText = `${daysUntilExpiry} days left`;
     statusClass = 'warning';
+    urgencyIcon = 'fas fa-clock';
+  } else if (daysUntilExpiry <= 30) {
+    statusText = `${daysUntilExpiry} days left`;
+    statusClass = 'good';
+    urgencyIcon = 'fas fa-check-circle';
   } else {
     statusText = `${daysUntilExpiry} days left`;
     statusClass = 'good';
+    urgencyIcon = 'fas fa-check-circle';
   }
+
+  const timeComparison = () => {
+    const now = currentDate.toLocaleDateString();
+    const expiry = expiryDate.toLocaleDateString();
+    return { now, expiry };
+  };
+
+  const { now, expiry } = timeComparison();
 
   return (
     <div className={`medical-medicine-card status-${medicine.status}`}>
@@ -40,6 +65,7 @@ export default function MedicineCard({ medicine, onEdit, onDonate, onDelete }) {
           </div>
         </div>
         <div className={`medical-expiry-badge ${statusClass}`}>
+          <i className={urgencyIcon}></i>
           {statusText}
         </div>
       </div>
@@ -74,6 +100,13 @@ export default function MedicineCard({ medicine, onEdit, onDonate, onDelete }) {
           </div>
           <div style={{ fontWeight: "500", color: "var(--foreground)" }}>
             {formatDate(medicine.expiryDate)}
+          </div>
+          <div style={{ 
+            fontSize: "0.65rem", 
+            color: "var(--muted-foreground)", 
+            marginTop: "0.25rem" 
+          }}>
+            Today: {now}
           </div>
         </div>
         <div>
