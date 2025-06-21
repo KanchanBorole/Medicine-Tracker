@@ -1,17 +1,27 @@
-import { medicines, donations, ngos, type Medicine, type Donation, type NGO, type InsertMedicine, type InsertDonation, type InsertNGO } from "@shared/schema";
+import { medicines, donations, ngos, users, type Medicine, type Donation, type NGO, type InsertMedicine, type InsertDonation, type InsertNGO, type User, type UpsertUser, type RegisterData } from "@shared/schema";
 import { db } from "./db";
 import { eq } from "drizzle-orm";
+import bcrypt from "bcrypt";
+import { nanoid } from "nanoid";
 
 export interface IStorage {
+  // User operations for authentication
+  getUser(id: string): Promise<User | undefined>;
+  getUserByUsername(username: string): Promise<User | undefined>;
+  getUserByEmail(email: string): Promise<User | undefined>;
+  createUser(userData: RegisterData): Promise<User>;
+  upsertUser(user: UpsertUser): Promise<User>;
+  validateUserPassword(username: string, password: string): Promise<User | null>;
+  
   // Medicine operations
-  getMedicines(): Promise<Medicine[]>;
+  getMedicines(userId?: string): Promise<Medicine[]>;
   getMedicine(id: number): Promise<Medicine | undefined>;
   createMedicine(medicine: InsertMedicine): Promise<Medicine>;
   updateMedicine(id: number, medicine: Partial<InsertMedicine>): Promise<Medicine | undefined>;
   deleteMedicine(id: number): Promise<boolean>;
   
   // Donation operations
-  getDonations(): Promise<Donation[]>;
+  getDonations(userId?: string): Promise<Donation[]>;
   getDonation(id: number): Promise<Donation | undefined>;
   createDonation(donation: InsertDonation): Promise<Donation>;
   updateDonation(id: number, donation: Partial<InsertDonation>): Promise<Donation | undefined>;
@@ -26,6 +36,7 @@ export class DatabaseStorage implements IStorage {
   constructor() {
     // Initialize with sample NGOs if the table is empty
     this.initializeNGOs();
+    this.initializeAdminUser();
   }
 
   private async initializeNGOs() {
@@ -71,6 +82,87 @@ export class DatabaseStorage implements IStorage {
     }
   }
 
+  private async initializeAdminUser() {
+    try {
+      const existingAdmin = await db.select().from(users).where(eq(users.role, "admin"));
+      
+      if (existingAdmin.length === 0) {
+        const hashedPassword = await bcrypt.hash("admin123", 10);
+        const adminUser: UpsertUser = {
+          id: nanoid(),
+          username: "admin",
+          email: "admin@medtracker.com",
+          password: hashedPassword,
+          firstName: "System",
+          lastName: "Administrator",
+          role: "admin",
+          active: true,
+        };
+
+        await db.insert(users).values(adminUser);
+        console.log("Initialized admin user (username: admin, password: admin123)");
+      }
+    } catch (error) {
+      console.error("Error initializing admin user:", error);
+    }
+  }
+
+  // User authentication methods
+  async getUser(id: string): Promise<User | undefined> {
+    const [user] = await db.select().from(users).where(eq(users.id, id));
+    return user;
+  }
+
+  async getUserByUsername(username: string): Promise<User | undefined> {
+    const [user] = await db.select().from(users).where(eq(users.username, username));
+    return user;
+  }
+
+  async getUserByEmail(email: string): Promise<User | undefined> {
+    const [user] = await db.select().from(users).where(eq(users.email, email));
+    return user;
+  }
+
+  async createUser(userData: RegisterData): Promise<User> {
+    const hashedPassword = await bcrypt.hash(userData.password, 10);
+    const newUser: UpsertUser = {
+      id: nanoid(),
+      username: userData.username,
+      email: userData.email,
+      password: hashedPassword,
+      firstName: userData.firstName,
+      lastName: userData.lastName,
+      role: userData.role || "user",
+      active: true,
+    };
+
+    const [user] = await db.insert(users).values(newUser).returning();
+    return user;
+  }
+
+  async upsertUser(user: UpsertUser): Promise<User> {
+    const [upsertedUser] = await db
+      .insert(users)
+      .values(user)
+      .onConflictDoUpdate({
+        target: users.id,
+        set: {
+          ...user,
+          updatedAt: new Date(),
+        },
+      })
+      .returning();
+    return upsertedUser;
+  }
+
+  async validateUserPassword(username: string, password: string): Promise<User | null> {
+    const user = await this.getUserByUsername(username);
+    if (!user) return null;
+
+    const isValid = await bcrypt.compare(password, user.password);
+    return isValid ? user : null;
+  }
+
   private calculateMedicineStatus(expiryDate: Date): string {
     const now = new Date();
     const daysUntilExpiry = Math.ceil((expiryDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
@@ -81,7 +173,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Medicine operations
-  async getMedicines(): Promise<Medicine[]> {
+  async getMedicines(userId?: string): Promise<Medicine[]> {
     return await db.select().from(medicines);
   }
 
@@ -137,11 +229,11 @@ export class DatabaseStorage implements IStorage {
 
   async deleteMedicine(id: number): Promise<boolean> {
     const result = await db.delete(medicines).where(eq(medicines.id, id));
-    return result.rowCount > 0;
+    return (result.rowCount || 0) > 0;
   }
 
   // Donation operations
-  async getDonations(): Promise<Donation[]> {
+  async getDonations(userId?: string): Promise<Donation[]> {
     return await db.select().from(donations);
   }
 

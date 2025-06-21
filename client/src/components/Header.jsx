@@ -1,10 +1,12 @@
 import { Link, useLocation } from "wouter";
 import { useState } from "react";
+import { useAuth } from "@/hooks/useAuth";
 import CurrentDateTime from "./CurrentDateTime";
 
 export default function Header() {
   const [location] = useLocation();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const { user, isAdmin, logout, isLoggingOut } = useAuth();
 
   const isActive = (path) => {
     if (path === "/" && location === "/") return true;
@@ -36,6 +38,34 @@ export default function Header() {
             <span className="logo-text">MediTrack</span>
           </div>
           <CurrentDateTime />
+        </div>
+
+        <div className="header-right">
+          {user && (
+            <div className="user-profile">
+              <div className="user-avatar">
+                {(user.firstName?.[0] || user.username?.[0] || 'U').toUpperCase()}
+              </div>
+              <div className="user-info">
+                <div className="user-name">
+                  {user.firstName ? `${user.firstName} ${user.lastName || ''}`.trim() : user.username}
+                </div>
+                <div className="user-role">{user.role}</div>
+              </div>
+              <button 
+                className="logout-button"
+                onClick={logout}
+                disabled={isLoggingOut}
+                title="Logout"
+              >
+                {isLoggingOut ? (
+                  <i className="fas fa-spinner fa-spin"></i>
+                ) : (
+                  <i className="fas fa-sign-out-alt"></i>
+                )}
+              </button>
+            </div>
+          )}
         </div>
         
         {/* Mobile menu button */}
@@ -82,14 +112,16 @@ export default function Header() {
                 Donations
               </Link>
             </li>
-            <li>
-              <Link 
-                href="/admin" 
-                className={isActive("/admin") ? "active" : ""}
-              >
-                Admin
-              </Link>
-            </li>
+            {isAdmin && (
+              <li>
+                <Link 
+                  href="/admin" 
+                  className={isActive("/admin") ? "active" : ""}
+                >
+                  Admin Panel
+                </Link>
+              </li>
+            )}
           </ul>
         </nav>
 
@@ -138,16 +170,18 @@ export default function Header() {
                     Donations
                   </Link>
                 </li>
-                <li>
-                  <Link 
-                    href="/admin" 
-                    className={isActive("/admin") ? "active" : ""}
-                    onClick={closeMobileMenu}
-                  >
-                    <i className="fas fa-cog"></i>
-                    Admin
-                  </Link>
-                </li>
+                {isAdmin && (
+                  <li>
+                    <Link 
+                      href="/admin" 
+                      className={isActive("/admin") ? "active" : ""}
+                      onClick={closeMobileMenu}
+                    >
+                      <i className="fas fa-cog"></i>
+                      Admin Panel
+                    </Link>
+                  </li>
+                )}
               </ul>
             </nav>
           </div>
