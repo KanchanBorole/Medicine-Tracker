@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # MediTrack - Medicine Expiry & Donation Tracker
 
 A comprehensive MERN stack application for tracking medicine expiry dates and facilitating donations to NGOs. Features barcode scanning, expiry notifications, and pickup scheduling.
@@ -132,3 +133,7 @@ A comprehensive MERN stack application for tracking medicine expiry dates and fa
   status: string, // good, warning, expired
   createdAt: Date
 }
+=======
+# Medicine-Tracker
+Medicine Tracker - Prevent Expiry, Promote Donation
+>>>>>>> 75bc0f7b96c5220ba21e3bec886105abd5dcc1d0
